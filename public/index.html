@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f1a">
+  <title>EarRest Showtime</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon-192.png?v=2" type="image/png">
+  <link rel="apple-touch-icon" href="/icon-192.png?v=2">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0f0f1a;
+      --surface: #1a1a2e;
+      --surface-2: #252542;
+      --surface-3: #2f2f4a;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent: #8b5cf6;
+      --accent-dim: #6d28d9;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --c-vocals: #e94560;
+      --c-drums: #f59e0b;
+      --c-bass: #10b981;
+      --c-guitar: #8b5cf6;
+      --c-other: #06b6d4;
+      --c-piano: #ec4899;
+      --c-notes: #fbbf24;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+      max-width: 100vw;
+    }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; -webkit-tap-highlight-color: transparent; }
+    button:focus { outline: none; }
+    input, select { font-family: inherit; }
+    svg { display: block; }
+
+    /* --- App Layout --- */
+    /* Lock the app shell to exactly the viewport height. Using min-height let
+       the shell grow taller than the screen, which pushed the sticky nav and
+       the player transport below the fold (controls "off-screen" vertically).
+       With a fixed height + overflow hidden, only the inner scroll areas move
+       and header / transport / nav stay pinned inside the viewport. */
+    #app { display: flex; flex-direction: column; height: 100dvh; max-height: 100dvh; overflow: hidden; }
+
+    /* --- Header --- */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.6rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-2);
+      position: sticky; top: 0; z-index: 100;
+      min-height: 48px;
+    }
+    .header h1 {
+      font-size: 1rem; font-weight: 700;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .header h1 svg { width: 22px; height: 22px; }
+    .header-actions { display: flex; align-items: center; gap: 0.4rem; }
+    .badge-offline {
+      font-size: 0.6rem; padding: 0.15rem 0.45rem;
+      border-radius: 999px; background: var(--warning); color: #000;
+      font-weight: 600; display: none;
+    }
+    .badge-offline.visible { display: inline-block; }
+    .btn-icon {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--surface-2);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .btn-icon svg { width: 18px; height: 18px; }
+    .btn-icon:active { opacity: 0.7; }
+
+    /* --- Views --- */
+    .view { display: none; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+    .view.active { display: flex; flex-direction: column; min-height: 0; }
+    #player-view.active { overflow: hidden; }
+    /* min-height:0 lets this scroll area shrink below its content height so the
+       transport bar below it is never pushed off the bottom of the viewport. */
+    #player-view .player-container { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+    #player-view .transport { flex-shrink: 0; }
+
+    /* --- Nav Bar --- */
+    .nav-bar {
+      display: flex; background: var(--surface);
+      border-top: 1px solid var(--surface-2);
+      padding-bottom: var(--safe-bottom);
+      position: sticky; bottom: 0; z-index: 100;
+    }
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 0.5rem 0; color: var(--text-muted);
+      font-size: 0.6rem; min-height: 50px; transition: color 0.15s;
+    }
+    .nav-item svg { width: 20px; height: 20px; margin-bottom: 2px; }
+    .nav-item.active { color: var(--accent); }
+    .nav-item:active { opacity: 0.7; }
+
+    /* --- Library View --- */
+    .library-padding { padding: 1rem; }
+    .section-title {
+      font-size: 0.75rem; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.05em;
+      margin-bottom: 0.5rem; margin-top: 1rem;
+    }
+    .section-title:first-child { margin-top: 0; }
+    .playlist-actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .pl-action-btn {
+      padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+      background: var(--surface); color: var(--text); border: 1px solid var(--surface-3);
+      min-height: 40px; display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+    .pl-action-btn:first-child { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .pl-action-btn:active { opacity: 0.7; }
+    .playlist-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 0.9rem 1rem; margin-bottom: 0.5rem;
+      display: flex; align-items: center; gap: 0.75rem; min-height: 48px;
+    }
+    .playlist-card:active { background: var(--surface-2); }
+    .playlist-card .pl-icon svg { width: 20px; height: 20px; color: var(--accent); }
+    .playlist-card .info { flex: 1; min-width: 0; }
+    .playlist-card .name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .playlist-card .count { font-size: 0.7rem; color: var(--text-muted); }
+    .playlist-card .arrow { color: var(--text-muted); }
+    .playlist-card .arrow svg { width: 16px; height: 16px; }
+
+    .song-list { display: flex; flex-direction: column; gap: 2px; }
+    .song-item {
+      background: var(--surface); border-radius: 8px;
+      padding: 0.7rem 1rem; display: flex; align-items: center; gap: 0.7rem; min-height: 48px;
+    }
+    .song-item:active { background: var(--surface-2); }
+    .song-item.now-playing { border-left: 3px solid var(--accent); }
+    .song-item .s-info { flex: 1; min-width: 0; }
+    .song-item .s-title { font-size: 0.85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-item .s-artist { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-item .s-bpm { font-size: 0.7rem; color: var(--accent); font-weight: 600; min-width: 40px; text-align: right; }
+    .s-menu {
+      width: 36px; height: 36px; min-width: 36px; border-radius: 8px;
+      background: var(--surface-2); color: var(--text-muted);
+      font-size: 1.1rem; line-height: 1; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .s-menu:active { opacity: 0.7; }
+    .playlist-card .s-menu { margin-left: auto; }
+    /* Action sheet (bottom-anchored menu) */
+    .action-sheet-item {
+      display: flex; align-items: center; gap: 0.6rem;
+      width: 100%; padding: 0.9rem 0.6rem; min-height: 48px;
+      border-radius: 10px; font-size: 0.9rem; color: var(--text);
+      background: var(--surface-2); margin-bottom: 0.4rem; text-align: left;
+    }
+    .action-sheet-item:active { opacity: 0.7; }
+    .action-sheet-item.danger { color: var(--danger); }
+    .back-btn {
+      display: flex; align-items: center; gap: 0.3rem;
+      color: var(--accent); font-size: 0.85rem; font-weight: 600;
+      padding: 0.5rem 0; margin-bottom: 0.5rem;
+    }
+
+    /* --- Player View --- */
+    .player-container { display: flex; flex-direction: column; min-height: 0; position: relative; }
+    .player-bg-thumb { position: fixed; inset: 0; background-size: cover; background-position: center; opacity: 0.15; filter: blur(6px); pointer-events: none; z-index: -1; }
+    .now-playing-bar { padding: 0.6rem 1rem; background: var(--surface); text-align: center; }
+    .np-title { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .np-artist { font-size: 0.7rem; color: var(--text-muted); }
+    .np-key { display: inline-block; margin-top: 0.3rem; font-size: 0.75rem; font-weight: 700; color: var(--warning); cursor: pointer; border-radius: 6px; padding: 0.2rem 0.6rem; min-height: 32px; line-height: 1.6; background: var(--surface-2); }
+    .np-key:active { opacity: 0.7; }
+
+    .timeline-wrap { padding: 1.75rem 1rem 1.75rem; position: relative; overflow: visible; }
+    .timeline {
+      position: relative; height: 24px;
+      background: var(--surface-2); border-radius: 4px; overflow: visible; touch-action: none;
+    }
+    .timeline canvas { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 100%; height: 200px; pointer-events: none; }
+    .timeline-progress { position: absolute; top: 0; left: 0; bottom: 0; background: rgba(139,92,246,0.2); pointer-events: none; transition: width 0.1s linear; border-radius: 4px; }
+    .timeline-cursor { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); pointer-events: none; z-index: 2; }
+    .timeline-loop { position: absolute; top: 0; bottom: 0; background: rgba(16,185,129,0.12); border-left: 2px solid var(--success); border-right: 2px solid var(--success); pointer-events: none; display: none; z-index: 1; }
+    .timeline-trim-left, .timeline-trim-right { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,0.5); pointer-events: none; z-index: 1; }
+    .timeline-trim-left { left: 0; border-radius: 6px 0 0 6px; }
+    .timeline-trim-right { right: 0; border-radius: 0 6px 6px 0; }
+    .timeline-notes-row { position: absolute; left: 0; right: 0; top: -14px; pointer-events: none; overflow: visible; z-index: 3; }
+    .time-labels { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); padding: 0.2rem 0; }
+
+    .chord-bar {
+      display: flex; align-items: center; gap: 0.3rem;
+      padding: 0.4rem 1rem; overflow-x: auto; scrollbar-width: none; min-height: 32px;
+    }
+    .chord-bar::-webkit-scrollbar { display: none; }
+    .chord-item { padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; background: var(--surface-2); color: var(--text-muted); flex-shrink: 0; }
+    .chord-item.active { background: var(--accent); color: #fff; }
+    .chord-item.past { opacity: 0.4; }
+
+    .mixer { flex: 0 0 auto; padding: 0.5rem; overflow-x: auto; overflow-y: hidden; display: flex; flex-direction: row; gap: 0.4rem; justify-content: center; }
+    .stem-row { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.5rem 0.4rem; background: var(--surface); border-radius: 8px; min-width: 52px; min-height: 180px; }
+    .stem-color { width: 20px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+    .stem-name { font-size: 0.6rem; font-weight: 600; text-transform: capitalize; flex-shrink: 0; text-align: center; }
+    .stem-vol { width: 4px; height: 100px; -webkit-appearance: slider-vertical; appearance: slider-vertical; writing-mode: vertical-lr; direction: rtl; background: var(--surface-2); border-radius: 2px; outline: none; flex: 1; min-height: 80px; }
+    .stem-vol::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+    .stem-vol::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: none; cursor: pointer; }
+    .stem-btn { width: 32px; height: 32px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-muted); flex-shrink: 0; }
+    .stem-btn.mute.active { background: var(--danger); color: #fff; }
+    .stem-btn.solo.active { background: var(--warning); color: #000; }
+    .stem-btns { display: flex; gap: 0.3rem; }
+    .h-slider { -webkit-appearance: none; appearance: none; height: 4px; flex: 1; background: var(--surface-2); border-radius: 2px; outline: none; }
+    .h-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+    .h-slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: none; cursor: pointer; }
+
+    @media (max-width: 599px) {
+      .mixer { flex-direction: column; align-items: center; min-height: auto; }
+      .stem-row { flex-direction: column; min-height: auto; width: 100%; min-width: unset; }
+      .stem-vol { writing-mode: horizontal-tb; direction: ltr; -webkit-appearance: none; appearance: none; width: 100%; height: 4px; min-height: unset; flex: 1; }
+    }
+
+    .transport {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.6rem; padding: 0.5rem 1rem;
+      background: var(--surface); border-top: 1px solid var(--surface-2);
+    }
+    .transport-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--surface-2);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .transport-btn svg { width: 20px; height: 20px; }
+    .transport-btn.play { width: 52px; height: 52px; background: var(--accent); }
+    .transport-btn.play svg { width: 24px; height: 24px; }
+    .transport-btn:active { opacity: 0.7; }
+    .transport-btn.active { color: var(--accent); }
+
+    .tools-bar { display: flex; gap: 0.3rem; padding: 0.4rem 0.8rem; overflow-x: auto; scrollbar-width: none; }
+    .tools-bar::-webkit-scrollbar { display: none; }
+    .tool-chip {
+      padding: 0.5rem 0.8rem; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+      background: var(--surface-2); color: var(--text-muted); flex-shrink: 0;
+      display: flex; align-items: center; gap: 0.3rem;
+      min-height: 36px; min-width: 36px; justify-content: center;
+      cursor: pointer; -webkit-tap-highlight-color: rgba(99,102,241,0.2);
+      user-select: none; -webkit-user-select: none;
+      border: none; touch-action: manipulation;
+    }
+    .tool-chip svg { width: 14px; height: 14px; }
+    .tool-chip.active { background: var(--accent); color: #fff; }
+    .tool-chip:active { opacity: 0.7; transform: scale(0.95); }
+
+    .speed-control { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 1rem; }
+    .speed-label { font-size: 0.7rem; color: var(--text-muted); min-width: 40px; }
+    .speed-slider { flex: 1; }
+    .speed-value { font-size: 0.75rem; font-weight: 600; min-width: 45px; text-align: right; }
+
+    /* --- Queue View ("Tocando agora") --- */
+    .queue-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+      padding: 0.8rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--surface-2);
+    }
+    .queue-title { font-size: 0.95rem; font-weight: 700; }
+    .queue-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0.5rem; }
+    .queue-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.6rem; margin-bottom: 0.35rem; border-radius: 10px;
+      background: var(--surface); border: 1px solid transparent;
+    }
+    .queue-item.playing { border-color: var(--accent); background: var(--surface-2); }
+    .queue-item.q-up-next { opacity: 1; }
+    .queue-item.q-played { opacity: 0.5; }
+    .q-drag-handle { cursor: grab; color: var(--text-muted); font-size: 1rem; padding: 0.2rem; min-width: 24px; text-align: center; touch-action: none; }
+    .q-info { flex: 1; min-width: 0; }
+    .q-title { font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .q-artist { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .q-badge { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; color: var(--accent); letter-spacing: 0.03em; flex-shrink: 0; }
+    .q-play { width: 40px; height: 40px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .q-play svg { width: 18px; height: 18px; }
+    .q-remove { width: 36px; height: 36px; border-radius: 8px; background: var(--surface-2); color: var(--text-muted); font-size: 1.1rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .q-remove:active, .q-play:active { opacity: 0.7; }
+    .q-drag-clone { position: fixed; z-index: 99999; opacity: 0.9; pointer-events: none; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    .q-context-label { font-size: 0.7rem; color: var(--text-muted); padding: 0 0.6rem 0.4rem; }
+
+    /* --- Setlist View --- */
+    .setlist-header {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.8rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--surface-2);
+    }
+    .setlist-header select {
+      background: var(--surface-2); color: var(--text);
+      border: none; border-radius: 8px; padding: 0.5rem 0.8rem; font-size: 0.85rem;
+    }
+    .setlist-header select:first-of-type { flex: 1; }
+    #metro-sound-select { flex: 0; min-width: 0; font-size: 0.75rem; padding: 0.5rem 0.5rem; }
+    .setlist-songs { flex: 1; overflow-y: auto; padding: 0.5rem; }
+    #setlist-view:fullscreen { background: var(--bg); }
+    #setlist-view:fullscreen .setlist-header { padding: 0.5rem 1rem; }
+    #setlist-view:fullscreen .setlist-songs { padding: 0.5rem 1rem; }
+    #setlist-view:fullscreen .setlist-item .sl-title { font-size: 1.8rem; }
+    #setlist-view:fullscreen .setlist-item .sl-bpm { font-size: 1.5rem; }
+    .setlist-item {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.9rem 0.8rem; padding-left: calc(0.8rem + 5px);
+      background: var(--surface); border-radius: 10px;
+      margin-bottom: 0.4rem; min-height: 56px;
+      border-left: 5px solid transparent;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .setlist-item.active { border-left-color: var(--accent); background: var(--surface-2); }
+    .setlist-item .sl-info { flex: 1; min-width: 0; }
+    .setlist-item .sl-title { font-size: 1.3rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .setlist-item .sl-artist { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .setlist-item .sl-bpm { font-size: 1rem; font-weight: 700; color: var(--accent); min-width: 55px; text-align: center; font-family: monospace; cursor: pointer; border-radius: 6px; padding: 0.15rem 0.3rem; }
+    .setlist-item .sl-bpm:hover { background: var(--surface-2); }
+    .setlist-item .sl-key { font-size: 0.85rem; font-weight: 700; color: var(--warning); min-width: 34px; text-align: center; cursor: pointer; border-radius: 6px; padding: 0.15rem 0.3rem; }
+    .setlist-item .sl-key:hover { background: var(--surface-2); }
+    .setlist-item .sl-key.sl-key--empty { color: var(--text-muted); font-weight: 400; }
+    .setlist-item .sl-actions { display: flex; gap: 0.4rem; }
+    .sl-btn {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: var(--surface-2);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .sl-btn svg { width: 20px; height: 20px; }
+    .sl-btn:active { opacity: 0.7; }
+    .sl-btn.playing { background: var(--accent); }
+    .sl-btn.metro-active { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: var(--warning); }
+
+    /* Setlist notes */
+    .setlist-note {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.8rem;
+      background: rgba(251,191,36,0.08); border-radius: 8px;
+      margin-bottom: 0.4rem; min-height: 40px;
+      border-left: 3px solid var(--warning);
+      cursor: pointer;
+    }
+    .setlist-note:hover { background: rgba(251,191,36,0.14); }
+    .sl-note-icon { font-size: 0.85rem; flex-shrink: 0; }
+    .sl-note-text { flex: 1; font-size: 1.1rem; color: var(--text); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sl-note-del { width: 28px; height: 28px; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 1.1rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sl-note-del:hover { background: rgba(233,69,96,0.15); color: var(--accent); }
+    .sl-add-note-btn {
+      display: block; width: 100%; padding: 0.2rem; margin-bottom: 0.25rem;
+      background: transparent; border: 1px dashed transparent; border-radius: 6px;
+      color: var(--text-muted); font-size: 0.7rem; text-align: center;
+      opacity: 0; transition: opacity 0.15s, border-color 0.15s;
+      cursor: pointer;
+    }
+    .setlist-songs:hover .sl-add-note-btn,
+    #setlist-view:fullscreen .sl-add-note-btn { opacity: 0.5; }
+    .sl-add-note-btn:hover { opacity: 1 !important; border-color: var(--warning); color: var(--warning); }
+    #setlist-view:fullscreen .setlist-note .sl-note-text { font-size: 1.45rem; }
+
+    /* Setlist drag & drop */
+    .sl-drag-handle { color: var(--text-muted); font-size: 1rem; cursor: grab; flex-shrink: 0; padding: 0.3rem; user-select: none; touch-action: none; }
+    .sl-drag-handle:active { cursor: grabbing; color: var(--accent); }
+
+    /* Collapse toggle — esconde visualmente a música na setlist (não altera dados) */
+    .sl-collapse-btn {
+      flex-shrink: 0;
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent; border: none; border-radius: 8px;
+      color: var(--text-muted); font-size: 1rem; line-height: 1;
+      cursor: pointer; user-select: none;
+    }
+    .sl-collapse-btn:hover { background: var(--surface-2); color: var(--text); }
+    .sl-collapse-btn:active { opacity: 0.7; }
+    /* Estado colapsado: linha fina, só a setinha + título esmaecido */
+    .setlist-item.sl-collapsed {
+      min-height: 40px; padding-top: 0.35rem; padding-bottom: 0.35rem;
+      opacity: 0.55;
+    }
+    .setlist-item.sl-collapsed .sl-artist,
+    .setlist-item.sl-collapsed .sl-key,
+    .setlist-item.sl-collapsed .sl-bpm,
+    .setlist-item.sl-collapsed .sl-actions { display: none; }
+    .setlist-item.sl-collapsed .sl-title { font-size: 1rem; font-weight: 500; }
+    #setlist-view:fullscreen .setlist-item.sl-collapsed .sl-title { font-size: 1.2rem; }
+    .sl-drag-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 8px; }
+    .sl-drag-clone { border-radius: 10px; }
+
+    /* --- Sync View --- */
+    .sync-padding { padding: 1rem; overflow: hidden; max-width: 100%; }
+    .sync-info { text-align: center; padding: 1.5rem 1rem; }
+    .sync-info h2 { font-size: 1.2rem; margin-bottom: 0.4rem; }
+    .sync-info p { color: var(--text-muted); font-size: 0.8rem; }
+    .storage-bar { background: var(--surface); border-radius: var(--radius); padding: 0.8rem 1rem; margin-bottom: 1rem; }
+    .storage-bar .label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+    .storage-bar .bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+    .storage-bar .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+    .storage-bar .values { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); margin-top: 0.25rem; }
+    .catalog-list { display: flex; flex-direction: column; gap: 0.4rem; overflow: hidden; }
+    .catalog-item { background: var(--surface); border-radius: var(--radius); padding: 0.7rem 1rem; display: flex; align-items: center; gap: 0.7rem; overflow: hidden; max-width: 100%; }
+    .catalog-item .info { flex: 1; min-width: 0; overflow: hidden; }
+    .catalog-item .title { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .catalog-item .meta { font-size: 0.65rem; color: var(--text-muted); }
+    .catalog-item .actions { display: flex; gap: 0.3rem; align-items: center; flex-shrink: 0; }
+    .btn-sm { padding: 0.35rem 0.7rem; border-radius: 8px; font-size: 0.7rem; font-weight: 600; min-height: 32px; display: inline-flex; align-items: center; gap: 0.3rem; }
+    .btn-sm svg { width: 14px; height: 14px; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:active { background: var(--accent-dim); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-secondary { background: var(--surface-2); color: var(--text); }
+    .cached-badge { font-size: 0.6rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: var(--success); color: #fff; }
+
+    /* --- Empty state --- */
+    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+    .empty-state svg { width: 48px; height: 48px; margin: 0 auto 0.8rem; opacity: 0.5; }
+    .empty-state h3 { font-size: 1rem; margin-bottom: 0.4rem; color: var(--text); }
+    .empty-state p { font-size: 0.8rem; }
+
+    /* --- Progress overlay --- */
+    /* Progress banner (non-blocking, top of screen) */
+    .progress-banner {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--surface); border-bottom: 1px solid var(--surface-2);
+      padding: 0.5rem 1rem; display: none; align-items: center; gap: 0.6rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .progress-banner.visible { display: flex; }
+    .progress-banner .pb-info { flex: 1; min-width: 0; }
+    .progress-banner .pb-title { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .progress-banner .pb-bar { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; margin-top: 0.3rem; }
+    .progress-banner .pb-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+    .progress-banner .pb-status { font-size: 0.65rem; color: var(--text-muted); flex-shrink: 0; }
+    /* Toast */
+    .toast-container { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); z-index: 900; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; pointer-events: none; }
+    .toast { background: var(--surface-2); color: var(--text); padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; box-shadow: 0 4px 12px rgba(0,0,0,0.4); animation: toastIn 0.2s ease-out; white-space: nowrap; }
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.info { border-left: 3px solid var(--accent); }
+    .toast.error { border-left: 3px solid var(--danger); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* --- Notes overlay --- */
+    .notes-display {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      background: rgba(15,15,26,0.95); border: 1px solid var(--accent);
+      border-radius: 10px; padding: 0.6rem 1.2rem;
+      font-size: 1rem; font-weight: 600; z-index: 200;
+      pointer-events: none; opacity: 0; transition: opacity 0.3s;
+      max-width: 90vw; text-align: center;
+    }
+    .notes-display.visible { opacity: 1; }
+
+    /* --- Responsive --- */
+    @media (min-width: 768px) {
+      .catalog-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+      .library-padding .playlists-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+      .setlist-item .sl-title { font-size: 1.3rem; }
+      .setlist-item .sl-bpm { font-size: 1.2rem; }
+    }
+    @media (min-width: 1024px) {
+      .catalog-list { grid-template-columns: 1fr 1fr 1fr; }
+      .view { max-width: 1100px; margin: 0 auto; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="3" ry="3"/>
+          <circle cx="12" cy="8" r="2"/>
+          <circle cx="9" cy="13" r="0.8" fill="currentColor" stroke="none"/>
+          <circle cx="15" cy="13" r="0.8" fill="currentColor" stroke="none"/>
+          <rect x="8" y="16" width="8" height="3" rx="1.5"/>
+        </svg>
+        Showtime
+      </h1>
+      <div class="header-actions">
+        <span class="badge-offline" id="offline-badge">OFFLINE</span>
+        <button class="btn-icon" id="btn-storage" title="Sincronizar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Library View -->
+    <main class="view active" id="library-view">
+      <div class="library-padding" id="library-content"></div>
+    </main>
+
+    <!-- Player View -->
+    <main class="view" id="player-view">
+      <div class="player-container" id="player-container">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          <h3>Nenhuma música selecionada</h3>
+          <p>Escolha uma música na biblioteca para tocar.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Setlist View -->
+    <main class="view" id="setlist-view">
+      <div class="setlist-header">
+        <select id="setlist-select"><option value="">Selecione uma setlist</option></select>
+        <select id="metro-sound-select" title="Som do metrônomo">
+          <option value="click">🥢 Click</option>
+          <option value="wood">🪵 Wood</option>
+          <option value="cowbell">🔔 Cowbell</option>
+          <option value="beat">🥁 Beat</option>
+        </select>
+        <button class="btn-icon" id="setlist-sync" title="Sincronizar setlist">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+        <button class="btn-icon" id="setlist-fullscreen" title="Tela cheia">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+        </button>
+      </div>
+      <div class="setlist-songs" id="setlist-songs"></div>
+    </main>
+
+    <!-- Queue View ("Tocando agora") -->
+    <main class="view" id="queue-view">
+      <div class="queue-header">
+        <div class="queue-title">Tocando agora</div>
+        <button class="btn-icon" id="queue-clear" title="Limpar fila" aria-label="Limpar fila">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        </button>
+      </div>
+      <div class="queue-list" id="queue-content"></div>
+    </main>
+
+    <!-- Sync View -->
+    <main class="view" id="sync-view">
+      <div class="sync-padding">
+        <div class="sync-info">
+          <h2>Sincronizar</h2>
+          <p>Escolha quais músicas ter disponíveis offline.</p>
+        </div>
+        <div class="storage-bar" id="storage-info">
+          <div class="label">Armazenamento local</div>
+          <div class="bar"><div class="bar-fill" id="storage-fill" style="width: 0%"></div></div>
+          <div class="values">
+            <span id="storage-used">Calculando...</span>
+            <span id="storage-available"></span>
+          </div>
+        </div>
+        <div id="catalog-content"></div>
+      </div>
+    </main>
+
+    <!-- Nav Bar -->
+    <nav class="nav-bar" id="nav-bar">
+      <button class="nav-item active" data-view="library-view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+        Biblioteca
+      </button>
+      <button class="nav-item" data-view="player-view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Player
+      </button>
+      <button class="nav-item" data-view="setlist-view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Setlist
+      </button>
+      <button class="nav-item" data-view="queue-view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h13M3 12h9M3 18h9"/><path d="M16 12l5 3-5 3z"/></svg>
+        Fila
+      </button>
+      <button class="nav-item" data-view="sync-view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+        Sync
+      </button>
+    </nav>
+
+    <!-- Progress overlay -->
+    <div class="progress-banner" id="progress-banner">
+      <div class="pb-info">
+        <div class="pb-title" id="progress-title">Baixando...</div>
+        <div class="pb-bar"><div class="pb-fill" id="progress-fill" style="width: 0%"></div></div>
+      </div>
+      <span class="pb-status" id="progress-status">0/0</span>
+    </div>
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Notes display -->
+    <div class="notes-display" id="notes-display"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

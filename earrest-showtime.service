@@ -1,0 +1,15 @@
+[Unit]
+Description=EarRest Showtime - Offline Music Player
+After=network.target earrest.service
+
+[Service]
+Type=simple
+User=lepalomo
+WorkingDirectory=/home/lepalomo/dev/earrest-showtime
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
