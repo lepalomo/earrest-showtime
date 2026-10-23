@@ -79,10 +79,14 @@ test.describe('Responsiveness — Layout Adaptation', () => {
     // Catalog should be single column
     await page.locator('[data-view="sync-view"]').click();
     await page.waitForTimeout(500);
-    const catalog = page.locator('.catalog-list');
-    if (await catalog.count() > 0) {
-      const gridCols = await catalog.evaluate(el => getComputedStyle(el).gridTemplateColumns);
-      // Single column = no grid or single value
+    // The catalog may render more than one `.catalog-list` (e.g. "Playlists"
+    // and "Músicas avulsas" sections). Assert every one is single-column, and
+    // avoid strict-mode violations by iterating per element.
+    const lists = page.locator('.catalog-list');
+    const count = await lists.count();
+    for (let i = 0; i < count; i++) {
+      const gridCols = await lists.nth(i).evaluate(el => getComputedStyle(el).gridTemplateColumns);
+      // Single column = flex (grid-template-columns: none) or one track value.
       expect(gridCols === 'none' || gridCols.split(' ').length <= 1).toBeTruthy();
     }
   });

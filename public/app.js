@@ -4428,6 +4428,10 @@ import { openDB, idbGetAll, idbPut, idbDelete, idbAdd } from './js/idb.js';
     const online = await checkConnection();
     setOnlineStatus(online);
     if (online) {
+      // Flush any edits queued in a previous (offline) session. Without this,
+      // pending edits only synced on a later connectivity transition, so edits
+      // made offline and then reopened while online sat unsynced indefinitely.
+      flushPendingEdits();
       // Pull shared setlist notes from the server, then refresh the UI.
       await pullSetlistNotes().catch(() => {});
       renderSetlistSelector();

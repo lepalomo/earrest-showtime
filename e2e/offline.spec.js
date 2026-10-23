@@ -17,12 +17,13 @@ test.describe('Offline Capability', () => {
     await expect(page.locator('.header h1')).toContainText('Showtime');
   });
 
-  test('should show offline badge when offline', async ({ page }) => {
+  test('should show offline badge when offline', async ({ page, context }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Block ping endpoint to simulate offline
-    await page.route('**/api/ping', route => route.abort());
+    // Block ping endpoint to simulate offline. context.route also intercepts
+    // service-worker fetches (page.route does not).
+    await context.route('**/api/ping', route => route.abort());
     // Wait for connectivity check interval
     await page.waitForTimeout(16000);
 
@@ -31,6 +32,17 @@ test.describe('Offline Capability', () => {
 
   test('should show library data from IndexedDB when offline', async ({ page, context }) => {
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    // The app shell + ES modules must be cached before going offline. Wait for
+    // the service worker to be activated AND controlling the page, otherwise an
+    // offline reload races the SW install and the shell fails to load.
+    await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) {
+        await new Promise(res => navigator.serviceWorker.addEventListener('controllerchange', res, { once: true }));
+      }
+      return reg.active?.state;
+    });
     // Seed data
     await page.evaluate(() => {
       return new Promise(resolve => {
@@ -74,8 +86,8 @@ test.describe('Offline Capability', () => {
   test('sync view should show "sem conexão" message when offline', async ({ page, context }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    await page.route('**/api/ping', route => route.abort());
-    await page.route('**/api/catalog', route => route.abort());
+    await context.route('**/api/ping', route => route.abort());
+    await context.route('**/api/catalog', route => route.abort());
     await page.waitForTimeout(16000);
 
     await page.locator('[data-view="sync-view"]').click();

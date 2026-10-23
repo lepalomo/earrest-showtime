@@ -27,9 +27,11 @@ test.describe('App Load & Initial State', () => {
     await expect(page.locator('#library-view')).toHaveClass(/active/);
   });
 
-  test('should show offline badge when server is unreachable', async ({ page }) => {
-    // Block ping before navigating
-    await page.route('**/api/ping', route => route.abort());
+  test('should show offline badge when server is unreachable', async ({ page, context }) => {
+    // Block ping before navigating. Use context.route (not page.route) so the
+    // interception also covers requests made by the service worker — page.route
+    // does NOT intercept SW fetches, which let the real ping through.
+    await context.route('**/api/ping', route => route.abort());
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
     // Wait for initial connectivity check + one interval
