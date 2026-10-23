@@ -1,4 +1,4 @@
-const CACHE_APP = 'showtime-app-v24';
+const CACHE_APP = 'showtime-app-v25';
 const CACHE_STEMS = 'showtime-stems-v1';
 const CACHE_API = 'showtime-api-v1';
 
