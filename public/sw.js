@@ -1,4 +1,4 @@
-const CACHE_APP = 'showtime-app-v23';
+const CACHE_APP = 'showtime-app-v24';
 const CACHE_STEMS = 'showtime-stems-v1';
 const CACHE_API = 'showtime-api-v1';
 
@@ -165,8 +165,11 @@ self.addEventListener('message', (e) => {
   }
 
   if (e.data?.type === 'CACHE_STEMS') {
-    // Cache a list of stem URLs
+    // Cache a list of stem URLs. A batchId (when provided) is echoed back in
+    // progress/complete events so the app can aggregate several concurrent
+    // batches into a single progress indicator.
     const urls = e.data.urls || [];
+    const batchId = e.data.batchId || null;
     caches.open(CACHE_STEMS).then(async cache => {
       let cached = 0;
       let failed = 0;
@@ -185,6 +188,7 @@ self.addEventListener('message', (e) => {
         self.clients.matchAll().then(clients => {
           clients.forEach(c => c.postMessage({
             type: 'CACHE_PROGRESS',
+            batchId,
             cached: cached,
             failed,
             total: urls.length
@@ -194,6 +198,7 @@ self.addEventListener('message', (e) => {
       self.clients.matchAll().then(clients => {
         clients.forEach(c => c.postMessage({
           type: 'CACHE_COMPLETE',
+          batchId,
           cached, failed, total: urls.length
         }));
       });

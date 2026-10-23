@@ -16,10 +16,10 @@ test.describe('App Load & Initial State', () => {
     await expect(page.locator('.header h1')).toContainText('Showtime');
   });
 
-  test('should have 4 navigation tabs', async ({ page }) => {
+  test('should have 5 navigation tabs', async ({ page }) => {
     await page.goto('/');
     const navItems = page.locator('.nav-item');
-    await expect(navItems).toHaveCount(4);
+    await expect(navItems).toHaveCount(5);
   });
 
   test('should show library view by default', async ({ page }) => {

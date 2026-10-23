@@ -3213,11 +3213,7 @@
     }
 
     toast(`Baixando "${pl.title}" (${songs.length} músicas)...`, 'info', 4000);
-    showProgress(`${pl.title}`, 0, allUrls.length);
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'CACHE_STEMS', urls: allUrls });
-    }
+    startDownloadBatch(pl.title, allUrls);
 
     await idbPut('playlists', { id: pl.id, title: pl.title, url: pl.url, position: pl.position || 0 });
     for (const ps of (catalog.playlistSongs || []).filter(ps => ps.playlist_id === playlistId)) {
@@ -3366,10 +3362,7 @@
 
     const urls = song.stems ? Object.values(song.stems) : [];
     toast(`Baixando "${song.title}"...`, 'info', 3000);
-    showProgress(song.title, 0, urls.length);
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'CACHE_STEMS', urls });
-    }
+    startDownloadBatch(song.title, urls);
 
     await idbPut('songs', {
       id: song.id, youtube_id: song.youtube_id, title: song.title, artist: song.artist,
@@ -3871,6 +3864,60 @@
   // ============================================================
   // Progress & Storage
   // ============================================================
+  // Aggregated download manager. Several downloads (e.g. multiple setlists)
+  // can run concurrently; each is a "batch". We sum their totals/progress into
+  // a single banner instead of letting each overwrite the other (which caused
+  // a jumpy count and progress bar, and an early hide on the first complete).
+  const _dl = { batches: new Map(), seq: 0 };
+
+  // Register a new download batch and tell the SW to cache its URLs. Returns
+  // the batchId. If urls is empty, nothing is shown.
+  function startDownloadBatch(title, urls) {
+    if (!urls || urls.length === 0) return null;
+    const batchId = `dl-${Date.now()}-${++_dl.seq}`;
+    _dl.batches.set(batchId, { title, total: urls.length, done: 0, complete: false });
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CACHE_STEMS', urls, batchId });
+    }
+    renderDownloadProgress();
+    return batchId;
+  }
+
+  function onBatchProgress(batchId, done, total) {
+    const b = _dl.batches.get(batchId);
+    if (!b) return;
+    b.done = done;
+    b.total = total;
+    renderDownloadProgress();
+  }
+
+  function onBatchComplete(batchId) {
+    const b = _dl.batches.get(batchId);
+    if (b) { b.complete = true; b.done = b.total; }
+    renderDownloadProgress();
+    // When every batch is finished, clear the banner and notify once.
+    const allDone = _dl.batches.size > 0 && [..._dl.batches.values()].every(x => x.complete);
+    if (allDone) {
+      _dl.batches.clear();
+      hideProgress();
+      toast('Download concluído!', 'success');
+      renderCatalog();
+    }
+  }
+
+  // Draw the single aggregated banner from the sum of all active batches.
+  function renderDownloadProgress() {
+    const batches = [..._dl.batches.values()];
+    if (batches.length === 0) { hideProgress(); return; }
+    const total = batches.reduce((a, b) => a + b.total, 0);
+    const done = batches.reduce((a, b) => a + b.done, 0);
+    const active = batches.filter(b => !b.complete).length;
+    let title;
+    if (batches.length === 1) title = batches[0].title;
+    else title = `Baixando ${batches.length} itens${active ? '' : ' (finalizando…)'}`;
+    showProgress(title, done, total);
+  }
+
   function showProgress(title, current, total) {
     document.getElementById('progress-banner').classList.add('visible');
     document.getElementById('progress-title').textContent = title;
@@ -4488,8 +4535,8 @@
     // Service Worker messages
     if (navigator.serviceWorker) {
       navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data?.type === 'CACHE_PROGRESS') updateProgress(e.data.cached + e.data.failed, e.data.total);
-        if (e.data?.type === 'CACHE_COMPLETE') { hideProgress(); toast('Download concluído!', 'success'); renderCatalog(); }
+        if (e.data?.type === 'CACHE_PROGRESS') onBatchProgress(e.data.batchId, e.data.cached + e.data.failed, e.data.total);
+        if (e.data?.type === 'CACHE_COMPLETE') onBatchComplete(e.data.batchId);
         if (e.data?.type === 'CACHE_SIZE') updateStorageDisplay(e.data.totalSize);
         if (e.data?.type === 'PURGE_COMPLETE') requestCacheSize();
       });

@@ -46,8 +46,8 @@ test.describe('Sync — Download & Remove', () => {
     const downloadBtn = page.locator('[data-action="download-playlist"]').first();
     if (await downloadBtn.count() > 0) {
       await downloadBtn.click();
-      // Progress overlay should appear
-      await expect(page.locator('#progress-overlay')).toHaveClass(/visible/, { timeout: 5000 });
+      // Progress banner should appear
+      await expect(page.locator('#progress-banner')).toHaveClass(/visible/, { timeout: 5000 });
     }
   });
 
