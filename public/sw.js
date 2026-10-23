@@ -1,10 +1,14 @@
-const CACHE_APP = 'showtime-app-v25';
+const CACHE_APP = 'showtime-app-v26';
 const CACHE_STEMS = 'showtime-stems-v1';
 const CACHE_API = 'showtime-api-v1';
 
 const APP_SHELL = [
   '/',
   '/app.js',
+  '/js/constants.js',
+  '/js/state.js',
+  '/js/utils.js',
+  '/js/idb.js',
   '/manifest.json',
   '/icon.svg',
   '/icon-192.png?v=2',

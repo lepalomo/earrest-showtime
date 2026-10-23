@@ -1,287 +1,24 @@
 // ============================================================
-// EarRest Showtime — app.js (Complete)
-// Offline-first player/presenter for music practice
+// EarRest Showtime — app.js (entry module)
+// Offline-first player/presenter for music practice.
+//
+// Being migrated from a single IIFE into ES modules. Foundation modules
+// (constants, state, utils, idb) are imported below; the remaining logic
+// still lives in the IIFE and will be extracted incrementally.
 // ============================================================
+import {
+  ICO, STEM_COLORS, STEM_ORDER, TOOLS_PAGES, KEYS_MAJOR, KEYS_MINOR,
+  COLLAPSE_KEY, QUEUE_LS_KEY, SONG_GAIN_MIN, SONG_GAIN_MAX, PITCH_RANGE
+} from './js/constants.js';
+import { state, tap } from './js/state.js';
+import { esc, formatTime, formatBytes, toast, mountOverlay, injectStyles } from './js/utils.js';
+import { openDB, idbGetAll, idbPut, idbDelete, idbAdd } from './js/idb.js';
 
 (() => {
   'use strict';
 
-  // --- SVG Icons (monocolor, 24x24 viewBox) ---
-  const ICO = {
-    play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
-    pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
-    prev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>',
-    next: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>',
-    skipBack: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg>',
-    skipFwd: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg>',
-    metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L8 22h8L12 2z"/><path d="M5 22h14"/><path d="M12 8l4-2"/></svg>',
-    notes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-    loop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',
-    music: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
-    chevRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
-    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-    refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>',
-    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
-    repeat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',
-    repeatOne: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/><text x="12" y="15" text-anchor="middle" fill="currentColor" stroke="none" font-size="8" font-weight="bold">1</text></svg>',
-  };
-
-  // --- Constants ---
-  const STEM_COLORS = {
-    vocals: '#e94560', drums: '#f59e0b', bass: '#10b981',
-    guitar: '#8b5cf6', other: '#06b6d4', piano: '#ec4899', notes: '#fbbf24'
-  };
-  const STEM_ORDER = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other', 'notes'];
-  const TOOLS_PAGES = ['pitch-speed', 'loop-trim', 'metronome', 'notes-presets'];
-
-  // Fixed list of musical keys for the key picker (12 major + 12 minor).
-  // Using sharps as the canonical accidental (C#, not Db) to keep the set simple.
-  const KEYS_MAJOR = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const KEYS_MINOR = KEYS_MAJOR.map(k => k + 'm');
-
-  // Inject modal & dynamic styles
-  const _styleEl = document.createElement('style');
-  _styleEl.textContent = `
-    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:500;display:flex;align-items:center;justify-content:center;padding:1rem}
-    .modal-box{background:var(--surface);border-radius:var(--radius);padding:1.5rem;max-width:320px;width:90vw;max-height:85vh;overflow-y:auto}
-    .modal-box h3{font-size:1rem;margin-bottom:0.5rem}
-    .modal-btn{padding:0.5rem 1rem;border-radius:8px;font-size:0.8rem;font-weight:600;min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center}
-    .modal-btn.confirm{background:var(--accent);color:#fff}
-    .modal-btn.cancel{background:var(--surface-2);color:var(--text)}
-    .modal-btn:active{opacity:0.7}
-    /* Key picker */
-    .key-picker-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0.4rem;margin:0.6rem 0}
-    .key-picker-label{font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin:0.5rem 0 0.1rem}
-    .key-cell{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:var(--surface-2);color:var(--text);font-size:0.85rem;font-weight:600;cursor:pointer;border:1px solid transparent}
-    .key-cell:active{opacity:0.7}
-    .key-cell.selected{background:var(--accent);color:#fff;border-color:var(--accent)}
-    .np-title.editing{background:var(--surface-2);border-radius:6px;padding:0.2rem 0.5rem;outline:1px solid var(--accent)}
-    #song-gain-value.adjusted{color:var(--accent)}
-    .mixer-mobile .transport-btn[disabled]{opacity:0.3;pointer-events:none}
-    /* Floating keyboard-shortcuts button (desktop only) */
-    .kbd-fab{position:fixed;right:16px;bottom:16px;z-index:480;width:44px;height:44px;border-radius:12px;
-      background:var(--surface-2);color:var(--text);border:1px solid rgba(255,255,255,0.12);
-      display:none;align-items:center;justify-content:center;cursor:pointer;font-size:1.1rem;
-      box-shadow:0 4px 14px rgba(0,0,0,0.35);transition:transform 0.12s,background 0.12s}
-    .kbd-fab:hover{background:var(--surface);transform:translateY(-2px)}
-    .kbd-fab:active{transform:translateY(0);opacity:0.8}
-    .kbd-list{display:flex;flex-direction:column;gap:0.25rem}
-    .kbd-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.35rem 0;border-bottom:1px solid var(--surface-2)}
-    .kbd-row:last-child{border-bottom:none}
-    .kbd-desc{font-size:0.8rem;color:var(--text)}
-    .kbd-keys{display:flex;gap:0.25rem;flex-shrink:0}
-    .kbd-key{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.7rem;line-height:1;
-      background:var(--surface-2);border:1px solid rgba(255,255,255,0.14);border-bottom-width:2px;
-      border-radius:6px;padding:0.25rem 0.4rem;min-width:20px;text-align:center;color:var(--text)}
-    /* Only show the floating button on desktop-sized screens */
-    @media (min-width:1024px){ .kbd-fab{display:flex} }
-    /* ===== Beat-align visual (waveform + click overlay) ===== */
-    .beat-align-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:600;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
-    .beat-align-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;width:100%;max-width:800px;flex-wrap:wrap}
-    .beat-align-header h3{color:var(--accent);font-size:0.95rem;flex:1;margin:0}
-    .beat-align-header select{background:var(--surface);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:6px 10px;font-size:0.8rem;min-height:44px}
-    .beat-align-header button{background:rgba(255,255,255,0.1);border:none;color:var(--text);padding:8px 14px;border-radius:8px;font-size:0.8rem;cursor:pointer;min-height:44px}
-    .beat-align-header .beat-align-save{background:var(--accent);color:#fff}
-    .beat-align-header .beat-align-play-btn{background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.4);color:var(--accent);font-size:1rem;padding:6px 12px;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.15s}
-    .beat-align-header .beat-align-play-btn:active{background:rgba(139,92,246,0.4)}
-    .beat-align-header .beat-align-play-btn.metro-on{background:rgba(245,158,11,0.25);border-color:rgba(245,158,11,0.6);color:#f59e0b}
-    .beat-align-canvas-wrap{position:relative;width:100%;max-width:800px;min-height:200px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);touch-action:none}
-    .beat-align-canvas-wrap canvas{display:block;width:100%;height:200px;background:var(--bg)}
-    .beat-align-info{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:12px;font-size:0.8rem;color:var(--text-muted)}
-    .beat-align-hint{font-size:0.72rem;color:var(--text-muted);opacity:0.7;margin-top:8px;text-align:center}
-    @media (max-width:768px) and (orientation:portrait){
-      .beat-align-overlay{padding:12px;justify-content:flex-start;padding-top:50px}
-      .beat-align-canvas-wrap{flex:1;max-height:55vh;width:100%}
-      .beat-align-canvas-wrap canvas{height:100%;width:100%}
-      .beat-align-info{flex-wrap:wrap;gap:8px}
-    }
-    @media (max-width:768px) and (orientation:landscape){
-      .beat-align-overlay{padding:10px 16px}
-      .beat-align-header{margin-bottom:8px}
-      .beat-align-canvas-wrap{max-height:50vh}
-    }
-    /* ===== Pitch generation control ===== */
-    .pitch-gen-row{display:flex;align-items:center;gap:0.3rem;flex-wrap:wrap;padding:0.3rem 0}
-    .pitch-gen-btn{min-height:36px;padding:0 0.5rem;border-radius:8px;background:var(--surface-2);color:var(--text);font-size:0.8rem;border:1px dashed var(--surface-3);cursor:pointer}
-    .pitch-gen-btn:active{opacity:0.7}
-    .pitch-gen-btn[disabled]{opacity:0.4;pointer-events:none}
-    .tool-chip.generating{opacity:0.6;position:relative}
-    .tool-chip.generating::after{content:'⟳';margin-left:0.25rem;display:inline-block;animation:pitch-spin 1s linear infinite}
-    @keyframes pitch-spin{to{transform:rotate(360deg)}}
-  `;
-  document.head.appendChild(_styleEl);
-
-  // Mounts a modal overlay. When the app is in element-level fullscreen
-  // (e.g. the setlist view), the browser only renders nodes inside the
-  // fullscreen element — anything appended to <body> stays invisible. So we
-  // append the overlay to the current fullscreen element when there is one,
-  // falling back to <body> otherwise.
-  function mountOverlay(overlay) {
-    const host = document.fullscreenElement || document.webkitFullscreenElement || document.body;
-    host.appendChild(overlay);
-    return overlay;
-  }
-
-  // --- App State ---
-  const state = {
-    // Connectivity
-    isOnline: false,
-    // IDB
-    idb: null,
-    // Local data
-    playlists: [],
-    songs: [],
-    playlistSongs: [],
-    setlistNotes: [],
-    // Navigation
-    currentView: 'library-view',
-    currentPlaylistId: null,
-    // Visual-only: songs collapsed ("escondidas") na setlist. Não altera a
-    // playlist/setlist — só esconde o item na tela. Persistido em localStorage.
-    collapsedSetlist: new Set(),
-    // Player
-    audioCtx: null,
-    masterGain: null,
-    // Persistent audio graph pool, keyed by stem name. Each entry is
-    // { audio, source, gain } created ONCE (while foregrounded) and reused
-    // across songs. Rebuilding MediaElementSource nodes on every track change
-    // is unreliable when the screen is locked (background media throttling),
-    // which caused songs to start "muted / only one stem". Reusing the graph
-    // and just swapping audio.src is far more robust in the background.
-    audioPool: {},
-    audioEls: {},
-    gainNodes: {},
-    sourceNodes: {},
-    isPlaying: false,
-    pausedAt: 0,
-    duration: 0,
-    currentSongId: null,
-    currentSong: null,
-    stems: {},
-    chords: [],
-    notes: [],
-    bpm: null,
-    beatOffset: 0,
-    bpmSections: [],
-    originalKey: null,
-    pitches: [0],
-    currentPitch: 0,
-    _pitchGenerating: null,
-    // Mixer
-    muted: new Set(),
-    soloed: new Set(),
-    volumes: {},
-    masterVolume: 1,
-    masterMuted: false,
-    // Per-song playback gain (multiplier applied on top of master volume).
-    // 1 = original mix. Adjusted in ±10% steps to level quiet songs.
-    songGain: 1,
-    // Playback
-    speed: 1,
-    repeatMode: 'off', // 'off', 'all', 'one'
-    loopA: null,
-    loopB: null,
-    trimBefore: null,
-    trimAfter: null,
-    // Metronome
-    metronome: { enabled: false, sound: 'click', volume: 0.6, intervalId: null, nextBeatTime: 0 },
-    // Notes
-    notesEnabled: true,
-    notesAudioEnabled: true,
-    _lastNoteIdx: -1,
-    // Animation
-    _animFrame: null,
-    _boundaryInterval: null,
-    _lastChordIdx: -1,
-    _loadId: 0,
-    _stemReady: false,
-    // Background/visibility handling (see visibility + boundary checker).
-    // When the screen is off or the tab is hidden, browsers throttle timers
-    // and stop rAF. We suspend visual work and defer stem re-sync until the
-    // page is visible again to avoid a burst of simultaneous seeks (glitches).
-    _hidden: (typeof document !== 'undefined' && document.hidden) || false,
-    _lastBoundaryTs: 0,
-    // UI state
-    _mixerStemIdx: 0,
-    _toolsPage: 0,
-    _lastMasterVol: 1,
-    _catalog: null,
-    _shuffledOrder: null,
-    // ---- Playback queue ("Tocando agora") ----
-    // The queue is the source of truth for playback order. Starting a
-    // playlist/setlist or a single song REPLACES the queue with that context.
-    // "Tocar a seguir" / "Adicionar ao final" mutate ONLY the queue, never the
-    // saved playlist/setlist. Persisted to localStorage (ephemeral, client-only).
-    queue: [],            // array of song IDs
-    queueIndex: -1,       // index of the currently-playing song in `queue`
-    queueContext: null,   // label describing where the queue came from (UI only)
-  };
-
-  // Tap tempo state
-  const tapTimes = [];
-  let tapTimeout = null;
-  let _tapPosSample = null;
-
-  // ============================================================
-  // IndexedDB
-  // ============================================================
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('showtime', 3);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('songs')) db.createObjectStore('songs', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('playlists')) db.createObjectStore('playlists', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('playlistSongs')) db.createObjectStore('playlistSongs', { keyPath: ['playlist_id', 'song_id'] });
-        if (!db.objectStoreNames.contains('pendingEdits')) {
-          const s = db.createObjectStore('pendingEdits', { keyPath: 'id', autoIncrement: true });
-          s.createIndex('songId', 'songId', { unique: false });
-        }
-        if (!db.objectStoreNames.contains('setlistNotes')) {
-          db.createObjectStore('setlistNotes', { keyPath: 'id', autoIncrement: true });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  function idbGetAll(store) {
-    return new Promise((resolve, reject) => {
-      const tx = state.idb.transaction(store, 'readonly');
-      const req = tx.objectStore(store).getAll();
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  function idbPut(store, value) {
-    return new Promise((resolve, reject) => {
-      const tx = state.idb.transaction(store, 'readwrite');
-      tx.objectStore(store).put(value);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  function idbDelete(store, key) {
-    return new Promise((resolve, reject) => {
-      const tx = state.idb.transaction(store, 'readwrite');
-      tx.objectStore(store).delete(key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  function idbAdd(store, value) {
-    return new Promise((resolve, reject) => {
-      const tx = state.idb.transaction(store, 'readwrite');
-      const req = tx.objectStore(store).add(value);
-      req.onsuccess = () => resolve(req.result);
-      tx.onerror = () => reject(tx.error);
-    });
-  }
+  // Inject dynamic styles (modals, key picker, beat-align, pitch gen).
+  injectStyles();
 
   // ============================================================
   // Pending Edits & Sync
@@ -960,8 +697,7 @@
   // (or louder) than the rest of the playlist. Applied on top of master volume
   // in updateGains(). Persisted per-song and synced to the server so it
   // survives stem reprocessing (stored in chords.json, kept by the worker).
-  const SONG_GAIN_MIN = 0.5;   // -50%
-  const SONG_GAIN_MAX = 3.0;   // +200%
+  // SONG_GAIN_MIN / SONG_GAIN_MAX imported from constants.js
   function adjustSongGain(deltaPct) {
     if (!state.currentSongId) return;
     let g = (state.songGain || 1) + deltaPct / 100;
@@ -1084,8 +820,8 @@
   // projects forward by the elapsed real time scaled by playback speed. If the
   // song is paused, the position doesn't advance.
   function songPositionAt(perfTs) {
-    if (!_tapPosSample) return getCurrentTime();
-    const { perf, songPos, playing, speed } = _tapPosSample;
+    if (!tap.posSample) return getCurrentTime();
+    const { perf, songPos, playing, speed } = tap.posSample;
     if (!playing) return songPos;
     const elapsedSec = (perfTs - perf) / 1000; // real seconds
     return songPos + elapsedSec * speed;       // media seconds advanced
@@ -1095,14 +831,14 @@
     const now = performance.now();
     // Sample the song position paired with this exact tap timestamp, so the
     // beat phase can be anchored precisely to when the user tapped.
-    _tapPosSample = { perf: now, songPos: getCurrentTime(), playing: state.isPlaying, speed: state.speed || 1 };
-    tapTimes.push(now);
-    if (tapTimes.length > 5) tapTimes.shift();
-    clearTimeout(tapTimeout);
+    tap.posSample = { perf: now, songPos: getCurrentTime(), playing: state.isPlaying, speed: state.speed || 1 };
+    tap.times.push(now);
+    if (tap.times.length > 5) tap.times.shift();
+    clearTimeout(tap.timeout);
 
-    if (tapTimes.length >= 2) {
+    if (tap.times.length >= 2) {
       const intervals = [];
-      for (let i = 1; i < tapTimes.length; i++) intervals.push(tapTimes[i] - tapTimes[i - 1]);
+      for (let i = 1; i < tap.times.length; i++) intervals.push(tap.times[i] - tap.times[i - 1]);
       const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
 
       // The user taps along with the audio as it plays. If the song is playing
@@ -1124,7 +860,7 @@
       if (state.metronome.enabled && state.isPlaying) startMetronomeTicking();
     }
 
-    tapTimeout = setTimeout(() => {
+    tap.timeout = setTimeout(() => {
       if (state.bpm && state.currentSongId) {
         state.currentSong.bpm = state.bpm;
         state.currentSong.beatOffset = state.beatOffset;
@@ -1132,7 +868,7 @@
         addPendingEdit('bpm', state.currentSongId, { bpm: state.bpm, beatOffset: state.beatOffset });
         saveSongSettings();
       }
-      tapTimes.length = 0;
+      tap.times.length = 0;
     }, 2000);
   }
 
@@ -1645,8 +1381,7 @@
   // ============================================================
   // Pitch Selection & Generation
   // ============================================================
-  // Range of semitones the user can request (±6 covers the common cases).
-  const PITCH_RANGE = [-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6];
+  // PITCH_RANGE imported from constants.js
 
   function renderPitchSelector() {
     const pitches = (state.pitches && state.pitches.length) ? state.pitches : [0];
@@ -2817,8 +2552,7 @@
 
   // ===== SETLIST COLLAPSE (visual-only) =====
   // Esconde visualmente uma música da setlist sem alterar playlist/setlist.
-  // Persistido por playlist em localStorage.
-  const COLLAPSE_KEY = 'showtime_setlist_collapsed';
+  // Persistido por playlist em localStorage. COLLAPSE_KEY from constants.js
 
   function loadCollapsedSetlist(playlistId) {
     state.collapsedSetlist = new Set();
@@ -3537,7 +3271,7 @@
   // ============================================================
   // Playback Queue ("Tocando agora")
   // ============================================================
-  const QUEUE_LS_KEY = 'showtime_queue';
+  // QUEUE_LS_KEY imported from constants.js
 
   function saveQueue() {
     try {
@@ -3932,15 +3666,6 @@
 
   function hideProgress() {
     document.getElementById('progress-banner').classList.remove('visible');
-  }
-
-  function toast(msg, type = 'info', duration = 3000) {
-    const container = document.getElementById('toast-container');
-    const el = document.createElement('div');
-    el.className = `toast ${type}`;
-    el.textContent = msg;
-    container.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(() => el.remove(), 300); }, duration);
   }
 
   function requestCacheSize() {
@@ -4684,28 +4409,8 @@
   }
 
   // ============================================================
-  // Utilities
+  // Utilities — esc/formatTime/formatBytes imported from ./js/utils.js
   // ============================================================
-  function esc(str) {
-    const el = document.createElement('span');
-    el.textContent = str || '';
-    return el.innerHTML;
-  }
-
-  function formatTime(s) {
-    if (!s || isNaN(s)) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, '0')}`;
-  }
-
-  function formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  }
 
   // ============================================================
   // Init
